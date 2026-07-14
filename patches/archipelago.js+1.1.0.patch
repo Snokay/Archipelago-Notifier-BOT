@@ -1,0 +1,19 @@
+diff --git a/node_modules/archipelago.js/dist/Client.js b/node_modules/archipelago.js/dist/Client.js
+index f04f25c..392df09 100644
+--- a/node_modules/archipelago.js/dist/Client.js
++++ b/node_modules/archipelago.js/dist/Client.js
+@@ -269,6 +269,14 @@ _Client_socket = new WeakMap(), _Client_status = new WeakMap(), _Client_emitter
+             __classPrivateFieldSet(this, _Client_status, ConnectionStatus_1.CONNECTION_STATUS.DISCONNECTED, "f");
+             reject([event]);
+         };
++        // On the server closing the connection (room ended, server restarted, etc).
++        // The original library never wired this up, so consumers had no way to detect it.
++        __classPrivateFieldGet(this, _Client_socket, "f").onclose = () => {
++            if (__classPrivateFieldGet(this, _Client_status, "f") === ConnectionStatus_1.CONNECTION_STATUS.CONNECTED) {
++                __classPrivateFieldGet(this, _Client_emitter, "f").emit("SessionClosed");
++            }
++            __classPrivateFieldSet(this, _Client_status, ConnectionStatus_1.CONNECTION_STATUS.DISCONNECTED, "f");
++        };
+     });
+ }, _Client_parsePackets = function _Client_parsePackets(event) {
+     // Parse packets and fire our PacketReceived event for each packet.

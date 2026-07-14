@@ -1,0 +1,19 @@
+{
+    "token": "",
+    "database": {
+        "host": "",
+        "user": "",
+        "password": "",
+        "database": ""
+    },
+    "test": {
+        "host": "",
+        "port": 0,
+        "game": "",
+        "player": "",
+        "channel": ""
+    },
+    "log": {
+        "channel": ""
+    }
+}
