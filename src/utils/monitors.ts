@@ -7,6 +7,15 @@ import Database from './database'
 const monitors: Monitor[] = []
 
 /**
+ * Stable identifier for a monitor. Deliberately not `monitor.client.uri` - that getter
+ * can be undefined depending on the underlying socket's state (e.g. mid-reconnect), and
+ * an empty autocomplete choice name makes Discord silently reject the whole choices list.
+ */
+function identifier (monitor: Monitor): string {
+  return `${monitor.data.host}:${monitor.data.port}`
+}
+
+/**
  * Remove a monitor from memory and the database. Only used for manual /unmonitor -
  * a session closing on its own no longer forgets the monitor, it reconnects instead
  * (see Monitor#onSessionClosed).
@@ -44,13 +53,13 @@ function make (data: MonitorData, client: DiscordClient): Promise<Monitor> {
 }
 
 function remove (host: string) {
-  const monitor = monitors.find((monitor) => monitor.client.uri?.includes(host))
+  const monitor = monitors.find((monitor) => identifier(monitor) === host)
   if (monitor == null) return
   forget(monitor, 'manually unmonitored')
 }
 
 function has (host: string) {
-  return monitors.some((monitor) => monitor.client.uri?.includes(host))
+  return monitors.some((monitor) => identifier(monitor) === host)
 }
 
 function get (guild: string) {
