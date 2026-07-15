@@ -181,6 +181,9 @@ export default class Monitor {
 
   // When a message is received from the server
   onJSON (packet: PrintJSONPacket) {
+    // TEMP DEBUG - remove once the missing-hint issue is confirmed fixed.
+    console.log(`[onJSON] packet type=${String(packet.type)}`)
+
     switch (packet.type) {
       case 'Collect':
       case 'ItemSend':
