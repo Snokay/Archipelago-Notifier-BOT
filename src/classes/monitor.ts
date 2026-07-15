@@ -20,6 +20,11 @@ export default class Monitor {
   reconnectDelay = RECONNECT_BASE_DELAY
   private reconnectingSince?: number
 
+  private readonly onDisconnectBound = this.onDisconnect.bind(this)
+  private readonly onJSONBound = this.onJSON.bind(this)
+  private readonly onBouncedBound = this.onBounced.bind(this)
+  private readonly onSessionClosedBound = this.onSessionClosed.bind(this)
+
   queue = {
     hints: [] as string[],
     items: [] as string[]
@@ -88,10 +93,24 @@ export default class Monitor {
 
     this.channel = discordClient.channels.cache.get(monitorData.channel) as TextBasedChannel
     this.guild = (discordClient.channels.cache.get(monitorData.channel) as GuildChannel).guild
+  }
 
-    client.addListener(SERVER_PACKET_TYPE.CONNECTION_REFUSED, this.onDisconnect.bind(this))
-    client.addListener(SERVER_PACKET_TYPE.PRINT_JSON, this.onJSON.bind(this))
-    client.addListener(SERVER_PACKET_TYPE.BOUNCED, this.onBounced.bind(this))
+  /**
+   * (Re)attaches our event listeners to the underlying archipelago.js client. Must run after
+   * every successful connect, not just once at construction: Client#disconnect() - called
+   * internally by the library on *any* failed connection attempt, not just on a deliberate
+   * disconnect - wipes every listener via removeAllListeners(). Without this, a reconnect that
+   * needed more than one attempt would "succeed" (we'd post "Reconnected to the server.") while
+   * silently never receiving another game event again. Removing before adding keeps this safe
+   * to call even when a reconnect succeeded on the first try and nothing was ever wiped.
+   */
+  private attachListeners () {
+    this.client.removeListener(SERVER_PACKET_TYPE.CONNECTION_REFUSED, this.onDisconnectBound)
+    this.client.removeListener(SERVER_PACKET_TYPE.PRINT_JSON, this.onJSONBound)
+    this.client.removeListener(SERVER_PACKET_TYPE.BOUNCED, this.onBouncedBound)
+    this.client.addListener(SERVER_PACKET_TYPE.CONNECTION_REFUSED, this.onDisconnectBound)
+    this.client.addListener(SERVER_PACKET_TYPE.PRINT_JSON, this.onJSONBound)
+    this.client.addListener(SERVER_PACKET_TYPE.BOUNCED, this.onBouncedBound)
 
     // SessionClosed is a custom event added by our archipelago.js patch (see
     // patches/archipelago.js+1.1.0.patch) and isn't in the upstream types. It fires
@@ -99,8 +118,9 @@ export default class Monitor {
     // room truly ending, but also just the local AP server being restarted for a new
     // game. We can't tell those apart, so we always try to reconnect rather than giving
     // up, since giving up would otherwise force a manual /monitor after every replay.
-    const clientAny: any = client
-    clientAny.addListener('SessionClosed', this.onSessionClosed.bind(this))
+    const clientAny: any = this.client
+    clientAny.removeListener('SessionClosed', this.onSessionClosedBound)
+    clientAny.addListener('SessionClosed', this.onSessionClosedBound)
   }
 
   private connectionInfo (): ConnectionInformation {
@@ -130,6 +150,7 @@ export default class Monitor {
       this.isReconnecting = false
       this.reconnectDelay = RECONNECT_BASE_DELAY
       this.reconnectingSince = undefined
+      this.attachListeners()
       onSuccess?.()
     }).catch(() => {
       if (this.reconnectingSince != null && Date.now() - this.reconnectingSince >= GIVE_UP_AFTER) {
