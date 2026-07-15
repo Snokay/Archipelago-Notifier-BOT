@@ -1,5 +1,5 @@
 import MonitorData from '../classes/monitordata'
-import { Client, ConnectionInformation, ITEMS_HANDLING_FLAGS } from 'archipelago.js'
+import { Client } from 'archipelago.js'
 import Monitor from '../classes/monitor'
 import { Client as DiscordClient } from 'discord.js'
 import Database from './database'
@@ -29,26 +29,24 @@ function forget (monitor: Monitor, reason: string) {
   Database.createLog(monitor.guild.id, '0', `Stopped tracking ${monitor.data.host}:${monitor.data.port} (${reason})`)
 }
 
+/**
+ * Registers the monitor immediately (even before the connection succeeds) so it's visible
+ * to /unmonitor and to the duplicate-host check right away, and lets it retry indefinitely
+ * via Monitor#connect instead of giving up silently on the first failed attempt - which
+ * previously meant a session that wasn't reachable yet (e.g. restored on bot startup before
+ * the game server was up) never got tracked or retried at all.
+ */
 function make (data: MonitorData, client: DiscordClient): Promise<Monitor> {
-  return new Promise<Monitor>((resolve, reject) => {
+  return new Promise<Monitor>((resolve) => {
     const archi = new Client()
-    const connectionInfo: ConnectionInformation = {
-      hostname: data.host,
-      port: data.port,
-      game: data.game,
-      name: data.player,
-      version: { major: 0, minor: 6, build: 7 },
-      items_handling: ITEMS_HANDLING_FLAGS.REMOTE_ALL,
-      tags: ['IgnoreGame', 'Tracker', 'Monitor', 'DeathLink']
-    }
+    const monitor = new Monitor(archi, data, client)
+    monitor.onGiveUp = () => forget(monitor, 'gave up reconnecting after 4 days')
+    monitors.push(monitor)
 
-    archi.connect(connectionInfo).then(() => {
-      const monitor = new Monitor(archi, data, client)
+    monitor.connect(() => {
       Database.createLog(monitor.guild.id, '0', `Connected to ${data.host}:${data.port}`)
-      monitors.push(monitor)
-
       resolve(monitor)
-    }).catch((err) => { console.log(err) })
+    })
   })
 }
 

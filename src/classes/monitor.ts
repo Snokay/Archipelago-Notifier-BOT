@@ -5,6 +5,7 @@ import RandomHelper from '../utils/randohelper'
 
 const RECONNECT_BASE_DELAY = 5000 // 5 seconds
 const RECONNECT_MAX_DELAY = 300000 // 5 minutes
+const GIVE_UP_AFTER = 4 * 24 * 60 * 60 * 1000 // 4 days
 
 export default class Monitor {
   client: Client<SlotData>
@@ -12,8 +13,12 @@ export default class Monitor {
   guild: Guild
   data: MonitorData
 
+  /** Set by whoever creates this monitor, to be told when it gives up reconnecting for good. */
+  onGiveUp?: () => void
+
   isReconnecting: boolean
   reconnectDelay = RECONNECT_BASE_DELAY
+  private reconnectingSince?: number
 
   queue = {
     hints: [] as string[],
@@ -110,32 +115,45 @@ export default class Monitor {
     }
   }
 
-  /** Retries the connection with exponential backoff (capped at 5 minutes) until it succeeds. */
-  private reconnect () {
-    if (this.isReconnecting) return
+  /**
+   * Connects (or reconnects) with exponential backoff, capped at 5 minutes between attempts.
+   * Used both for the very first connection and for every reconnect afterwards, so a session
+   * that's never come up yet and one that dropped after working fine both get the same
+   * treatment. Gives up (and calls `onGiveUp`) after 4 days of nothing but failures, as a
+   * safety net for sessions that are gone for good and never got a manual /unmonitor.
+   */
+  connect (onSuccess?: () => void) {
     this.isReconnecting = true
-    this.attemptReconnect()
-  }
+    if (this.reconnectingSince == null) this.reconnectingSince = Date.now()
 
-  private attemptReconnect () {
     this.client.connect(this.connectionInfo()).then(() => {
       this.isReconnecting = false
       this.reconnectDelay = RECONNECT_BASE_DELAY
-      this.send('Reconnected to the server.')
+      this.reconnectingSince = undefined
+      onSuccess?.()
     }).catch(() => {
-      setTimeout(() => this.attemptReconnect(), this.reconnectDelay)
+      if (this.reconnectingSince != null && Date.now() - this.reconnectingSince >= GIVE_UP_AFTER) {
+        this.send('I haven\'t been able to reconnect in 4 days, so I\'ve stopped trying. Use /monitor again if this session comes back.')
+        this.isReconnecting = false
+        this.onGiveUp?.()
+        return
+      }
+
+      setTimeout(() => this.connect(onSuccess), this.reconnectDelay)
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX_DELAY)
     })
   }
 
   onDisconnect () {
     this.send('Disconnected from the server.')
-    this.reconnect()
+    if (this.isReconnecting) return
+    this.connect(() => this.send('Reconnected to the server.'))
   }
 
   onSessionClosed () {
     this.send('This Archipelago session has closed. Attempting to reconnect...')
-    this.reconnect()
+    if (this.isReconnecting) return
+    this.connect(() => this.send('Reconnected to the server.'))
   }
 
   // When a message is received from the server
