@@ -1,7 +1,10 @@
 import { EmbedBuilder, Guild, TextBasedChannel, Client as DiscordClient, GuildChannel } from 'discord.js'
-import { Client, CollectJSONPacket, HintJSONPacket, ITEMS_HANDLING_FLAGS, ItemSendJSONPacket, PrintJSONPacket, SERVER_PACKET_TYPE, SlotData } from 'archipelago.js'
+import { Client, CollectJSONPacket, ConnectionInformation, HintJSONPacket, ITEMS_HANDLING_FLAGS, ItemSendJSONPacket, PrintJSONPacket, SERVER_PACKET_TYPE, SlotData } from 'archipelago.js'
 import MonitorData from './monitordata'
 import RandomHelper from '../utils/randohelper'
+
+const RECONNECT_BASE_DELAY = 5000 // 5 seconds
+const RECONNECT_MAX_DELAY = 300000 // 5 minutes
 
 export default class Monitor {
   client: Client<SlotData>
@@ -10,6 +13,7 @@ export default class Monitor {
   data: MonitorData
 
   isReconnecting: boolean
+  reconnectDelay = RECONNECT_BASE_DELAY
 
   queue = {
     hints: [] as string[],
@@ -82,23 +86,55 @@ export default class Monitor {
 
     client.addListener(SERVER_PACKET_TYPE.CONNECTION_REFUSED, this.onDisconnect.bind(this))
     client.addListener(SERVER_PACKET_TYPE.PRINT_JSON, this.onJSON.bind(this))
+
+    // SessionClosed is a custom event added by our archipelago.js patch (see
+    // patches/archipelago.js+1.1.0.patch) and isn't in the upstream types. It fires
+    // whenever the socket closes on a previously-connected client - this includes the
+    // room truly ending, but also just the local AP server being restarted for a new
+    // game. We can't tell those apart, so we always try to reconnect rather than giving
+    // up, since giving up would otherwise force a manual /monitor after every replay.
+    const clientAny: any = client
+    clientAny.addListener('SessionClosed', this.onSessionClosed.bind(this))
   }
 
-  onDisconnect () {
-    this.send('Disconnected from the server.')
-
-    if (this.isReconnecting) return
-    this.isReconnecting = true
-
-    // try to reconnect every 5 minutes
-    this.client.connect({
+  private connectionInfo (): ConnectionInformation {
+    return {
       game: this.data.game,
       hostname: this.data.host,
       port: this.data.port,
       name: this.data.player,
       version: { major: 0, minor: 6, build: 7 },
-      items_handling: ITEMS_HANDLING_FLAGS.REMOTE_ALL
-    }).then(() => { this.isReconnecting = false }).catch(() => { setTimeout(() => { this.isReconnecting = false; this.onDisconnect() }, 300000) })
+      items_handling: ITEMS_HANDLING_FLAGS.REMOTE_ALL,
+      tags: ['IgnoreGame', 'Tracker', 'Monitor']
+    }
+  }
+
+  /** Retries the connection with exponential backoff (capped at 5 minutes) until it succeeds. */
+  private reconnect () {
+    if (this.isReconnecting) return
+    this.isReconnecting = true
+    this.attemptReconnect()
+  }
+
+  private attemptReconnect () {
+    this.client.connect(this.connectionInfo()).then(() => {
+      this.isReconnecting = false
+      this.reconnectDelay = RECONNECT_BASE_DELAY
+      this.send('Reconnected to the server.')
+    }).catch(() => {
+      setTimeout(() => this.attemptReconnect(), this.reconnectDelay)
+      this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX_DELAY)
+    })
+  }
+
+  onDisconnect () {
+    this.send('Disconnected from the server.')
+    this.reconnect()
+  }
+
+  onSessionClosed () {
+    this.send('This Archipelago session has closed. Attempting to reconnect...')
+    this.reconnect()
   }
 
   // When a message is received from the server

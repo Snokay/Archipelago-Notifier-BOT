@@ -7,8 +7,9 @@ import Database from './database'
 const monitors: Monitor[] = []
 
 /**
- * Remove a monitor from memory and the database. Shared by manual /unmonitor
- * and automatic cleanup when a session closes on its own.
+ * Remove a monitor from memory and the database. Only used for manual /unmonitor -
+ * a session closing on its own no longer forgets the monitor, it reconnects instead
+ * (see Monitor#onSessionClosed).
  */
 function forget (monitor: Monitor, reason: string) {
   const index = monitors.indexOf(monitor)
@@ -36,17 +37,6 @@ function make (data: MonitorData, client: DiscordClient): Promise<Monitor> {
       const monitor = new Monitor(archi, data, client)
       Database.createLog(monitor.guild.id, '0', `Connected to ${data.host}:${data.port}`)
       monitors.push(monitor)
-
-      // The Archipelago session ended or became unreachable (server closed the
-      // socket). Let players know, then stop tracking it so it isn't kept
-      // around in memory or reconnected forever.
-      // Cast to `any`: SessionClosed is a custom event added by our archipelago.js
-      // patch (see patches/archipelago.js+1.1.0.patch) and isn't in the upstream types.
-      const archiAny: any = archi
-      archiAny.addListener('SessionClosed', () => {
-        monitor.send('This Archipelago session has closed. I\'ve stopped monitoring it.')
-        forget(monitor, 'session closed')
-      })
 
       resolve(monitor)
     }).catch((err) => { console.log(err) })
