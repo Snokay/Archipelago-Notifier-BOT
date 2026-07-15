@@ -28,17 +28,9 @@ export default class UnmonitorCommand extends Command {
 
   autocomplete (interaction: AutocompleteInteraction): void {
     if (interaction.guildId == null) return
-
-    // TEMP DEBUG - remove once the /unmonitor empty-list issue is confirmed fixed.
-    try {
-      const choices = Monitors.get(interaction.guildId).map(monitor => {
-        const uri = `${monitor.data.host}:${monitor.data.port}`
-        return { name: `${uri} (${monitor.data.game} - ${monitor.data.player})`, value: uri }
-      })
-      console.log(`[unmonitor autocomplete] guild=${interaction.guildId} choices=${JSON.stringify(choices)}`)
-      interaction.respond(choices).catch((err) => console.error('[unmonitor autocomplete] respond() rejected:', err))
-    } catch (err) {
-      console.error('[unmonitor autocomplete] threw:', err)
-    }
+    interaction.respond(Monitors.get(interaction.guildId).map(monitor => {
+      const uri = `${monitor.data.host}:${monitor.data.port}`
+      return { name: `${uri} (${monitor.data.game} - ${monitor.data.player})`, value: uri }
+    }))
   }
 }
