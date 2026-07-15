@@ -1,17 +1,32 @@
-import { MysqlError, createConnection } from 'mysql'
+import { MysqlError, createConnection, Connection as MysqlConnection } from 'mysql'
 import Monitor from '../classes/monitor'
 import { Connection } from '../classes/connection'
 import MonitorData from '../classes/monitordata'
 const config = require('../../config/config.json')
 
-const connection = createConnection({
-  host: config.database.host,
-  user: config.database.user,
-  password: config.database.password,
-  database: config.database.database
-})
+let connection: MysqlConnection
 
-connection.connect()
+/**
+ * (Re)establish the MySQL connection. MySQL can drop idle connections (wait_timeout)
+ * or reset the socket; without an 'error' handler that's an uncaught exception that
+ * crashes the whole bot, not just the DB layer. Reconnect instead of letting that happen.
+ */
+function connect () {
+  connection = createConnection({
+    host: config.database.host,
+    user: config.database.user,
+    password: config.database.password,
+    database: config.database.database
+  })
+
+  connection.connect((err) => { if (err != null) setTimeout(connect, 2000) })
+  connection.on('error', (err: MysqlError) => {
+    console.error('MySQL connection error:', err)
+    if (err.fatal) connect()
+  })
+}
+
+connect()
 
 /**
  * Migrate the database and ensure all tables exist.
