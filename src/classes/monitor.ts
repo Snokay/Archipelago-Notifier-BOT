@@ -66,10 +66,12 @@ export default class Monitor {
   sendQueue () {
     const fields = this.queue.hints.map((message, index) => ({ name: `#${index + 1}`, value: message }))
     this.queue.hints = []
+    // TEMP DEBUG - remove once the missing-hint issue is confirmed fixed.
+    console.log('[sendQueue] hint fields:', JSON.stringify(fields))
     // split into multiple messages if there are too many items
     while (fields.length > 0) {
       const message = new EmbedBuilder().setTitle(this.titleWithSession('Hints')).addFields(fields.splice(0, 25)).data
-      this.channel.send({ embeds: [message] })
+      this.channel.send({ embeds: [message] }).catch((err) => console.error('[sendQueue] hint send() rejected:', err))
     }
 
     const items = this.queue.items.map((message, index) => ({ name: `#${index + 1}`, value: message }))
@@ -185,6 +187,9 @@ export default class Monitor {
         this.addQueue(this.convertData(packet), 'items')
         break
       case 'Hint':
+        // TEMP DEBUG - remove once the missing-hint issue is confirmed fixed.
+        console.log('[Hint] raw packet:', JSON.stringify(packet))
+        console.log('[Hint] converted message:', JSON.stringify(this.convertData(packet)))
         this.addQueue(this.convertData(packet), 'hints')
         break
       case 'Join':
