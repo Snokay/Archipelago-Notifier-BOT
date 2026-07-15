@@ -30,7 +30,7 @@ function make (data: MonitorData, client: DiscordClient): Promise<Monitor> {
       name: data.player,
       version: { major: 0, minor: 6, build: 7 },
       items_handling: ITEMS_HANDLING_FLAGS.REMOTE_ALL,
-      tags: ['IgnoreGame', 'Tracker', 'Monitor']
+      tags: ['IgnoreGame', 'Tracker', 'Monitor', 'DeathLink']
     }
 
     archi.connect(connectionInfo).then(() => {

@@ -1,5 +1,5 @@
 import { EmbedBuilder, Guild, TextBasedChannel, Client as DiscordClient, GuildChannel } from 'discord.js'
-import { Client, CollectJSONPacket, ConnectionInformation, HintJSONPacket, ITEMS_HANDLING_FLAGS, ItemSendJSONPacket, PrintJSONPacket, SERVER_PACKET_TYPE, SlotData } from 'archipelago.js'
+import { BouncedPacket, Client, CollectJSONPacket, ConnectionInformation, DeathLinkData, HintJSONPacket, ITEMS_HANDLING_FLAGS, ItemSendJSONPacket, PrintJSONPacket, SERVER_PACKET_TYPE, SlotData } from 'archipelago.js'
 import MonitorData from './monitordata'
 import RandomHelper from '../utils/randohelper'
 
@@ -86,6 +86,7 @@ export default class Monitor {
 
     client.addListener(SERVER_PACKET_TYPE.CONNECTION_REFUSED, this.onDisconnect.bind(this))
     client.addListener(SERVER_PACKET_TYPE.PRINT_JSON, this.onJSON.bind(this))
+    client.addListener(SERVER_PACKET_TYPE.BOUNCED, this.onBounced.bind(this))
 
     // SessionClosed is a custom event added by our archipelago.js patch (see
     // patches/archipelago.js+1.1.0.patch) and isn't in the upstream types. It fires
@@ -105,7 +106,7 @@ export default class Monitor {
       name: this.data.player,
       version: { major: 0, minor: 6, build: 7 },
       items_handling: ITEMS_HANDLING_FLAGS.REMOTE_ALL,
-      tags: ['IgnoreGame', 'Tracker', 'Monitor']
+      tags: ['IgnoreGame', 'Tracker', 'Monitor', 'DeathLink']
     }
   }
 
@@ -161,5 +162,13 @@ export default class Monitor {
         this.send(`**${this.client.players.get(packet.slot)?.name}** (${this.client.players.get(packet.slot)?.game}) left the game!`)
         break
     }
+  }
+
+  // DeathLink deaths arrive as Bounced packets tagged "DeathLink" (see the "DeathLink" connect tag above).
+  onBounced (packet: BouncedPacket) {
+    if (packet.tags == null || !packet.tags.includes('DeathLink')) return
+
+    const data = packet.data as unknown as DeathLinkData
+    this.send(data.cause != null && data.cause !== '' ? `💀 ${data.cause}` : `💀 **${data.source}** died.`)
   }
 }

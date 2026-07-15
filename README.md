@@ -14,6 +14,7 @@ The bot supports the following events to display in Discord:
 - Player Leave
 - Item Send
 - Hint
+- DeathLink
 
 ## Getting started (self-hosted)
 
