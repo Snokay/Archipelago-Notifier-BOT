@@ -33,8 +33,8 @@ client.on(Events.GuildCreate, async (guild) => {
   await Database.createLog(guild.id, '0', 'Added to guild')
 
   // Document to the logs channel
-  const channel = client.channels.cache.get(CONFIG.logs.channel) as TextBasedChannel
-  channel.send(`Added to guild ${guild.name}`)
+  const channel = client.channels.cache.get(CONFIG.log.channel) as TextBasedChannel
+  channel?.send(`Added to guild ${guild.name}`).catch(() => {})
 })
 
 client.on(Events.GuildDelete, async (guild) => {
